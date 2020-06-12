@@ -1,0 +1,85 @@
+/*{
+    "author": "Mark Fowler <mark@twoshortplanks.com>",
+    "targets": ["omnifocus"],
+    "type": "action",
+    "identifier": "computer.optimize.of.defer.workingday",
+    "version": "0.1",
+    "description": "A plug-in that defers all selected projects (or projects containing selected tasks) to the next workday, i.e. on Fri/Sat/Sun it defers the project to the following Monday.",
+    "label": "Defer Project To The Next Workday",
+    "mediumLabel": "Defer Project a Workday",
+    "paletteLabel": "Defer Project Workday",
+}*/
+(() => {
+  // //// date / time library copy and paste code ////
+
+  var oneDay = new DateComponents();
+  oneDay.day = 1;
+
+  var tomorrow = () => {
+    var cal = Calendar.current;
+
+    // when does tomorrow start?
+    var nextDay = cal.startOfDay(new Date());
+    nextDay = cal.dateByAddingDateComponents(nextDay, oneDay);
+
+    // set the time to be 6am.  Ideally we'd like to use the "Default time
+    // for defer dates" from the preferences, but we can't access that.
+    // Note we want to hard set the time not use add hours so not to have
+    // weird times during daylight saving shifts, etc.
+    nextDay.setHours(6);
+
+    return nextDay;
+  };
+
+  // next workday
+  var nextWorkday = () => {
+    var cal = Calendar.current;
+    nextDay = tomorrow();
+
+    // if this isn't monday to friday, keep moving forward till it is
+    while (nextDay.getDay() < 1 || nextDay.getDay() > 5) {
+      nextDay = cal.dateByAddingDateComponents(nextDay, oneDay);
+    }
+
+    return nextDay;
+  };
+
+  // //// tasks / project library copy and paste code ////
+
+  // get the projects (if any) of the passed tasks
+  var projectsFromTasks = (t) =>
+    t.map((t) => t.containingProject).filter((p) => p);
+
+  // action factory that acts on all projects selected or we have children
+  // of the project selected
+  var projectAction = (callback) => {
+    var action = new PlugIn.Action((selection) => {
+      var collected = {};
+      // get projects selected
+      selection.projects.forEach((p) => (collected[p.id.primaryKey] = p));
+      // get projects of tasks selected
+      projectsFromTasks(selection.tasks).forEach(
+        (p) => (collected[p.id.primaryKey] = p)
+      );
+
+      // call the callback with the unique selected projects
+      callback(Object.values(collected));
+    });
+
+    // validation - only offer this if we could find any direct or indirectly
+    // selected projects
+    action.validate = (s) =>
+      s.projects.length + projectsFromTasks(s.tasks).length > 0;
+
+    return action;
+  };
+
+  // //// per plugin code ///
+
+  return projectAction((projects) => {
+    var nwd = nextWorkday();
+    projects.forEach((p) => {
+      p.deferDate = nwd;
+    });
+  });
+})();
